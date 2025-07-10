@@ -6,7 +6,7 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'cdn.nba.com',
         port: '',
-        pathname: '/**',
+        pathname: '/headshots/**',
       },
       {
         protocol: 'https',
