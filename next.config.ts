@@ -6,9 +6,23 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'cdn.nba.com',
         port: '',
-        pathname: '/headshots/**',
+        pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'ak-static.cms.nba.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.nba.com',
+        port: '',
+        pathname: '/**',
+      }
     ],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
 };
 

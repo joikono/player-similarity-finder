@@ -1,9 +1,22 @@
+export type PlayerStats = {
+    points: number;
+    assists: number;
+    rebounds: number;
+    steals: number;
+    blocks: number;
+    turnovers: number;
+    fieldGoalPercentage: number;
+    threePointPercentage: number;
+    freeThrowPercentage: number;
+};
+
 export type Player = {
     id: number;
     name: string;
     team: string;
     position: string;
     imageUrl: string;
+    stats?: PlayerStats; // Optional since mock data might not have stats
 };
 
 export const mockPlayers: Player[] = [
@@ -28,4 +41,4 @@ export const mockPlayers: Player[] = [
         position: 'Center',
         imageUrl: 'https://cdn.nba.com/headshots/nba/latest/1040x760/203999.png',
     },
-  ];
+];
