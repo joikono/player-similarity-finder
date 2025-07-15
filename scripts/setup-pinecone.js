@@ -86,7 +86,7 @@ async function setupPinecone() {
 // Helper function to fetch all players 
 async function fetchAllPlayers() {
     const allPlayers = [];
-
+    let a = 1;
     try {
         // Use the same working API call from your route.ts
         const response = await fetch(
@@ -152,6 +152,17 @@ async function fetchAllPlayers() {
 
                     if (games.length > 0) {
                         // Calculate season averages (same logic as route.ts)
+                        
+                        if (a == 1) {
+                            // check stat indexing
+                            console.log(`Sample game data for ${playerName}:`);
+                            games[2].forEach((value, index) => { // to verify 3p% index
+                                console.log(`Index ${index}: ${value}`);
+                            });
+                            console.log(`Game array length:`, games[0].length);
+                            a++;
+                        }
+
                         const totals = games.reduce((acc, game) => {
                             if (!game || game.length < 25) return acc;
 
