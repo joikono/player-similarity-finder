@@ -17,6 +17,18 @@
             "env": {
                 "NODE_ENV": "development"
             }
+        },
+        {
+            "name": "Debug Pinecone Setup",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/setup-pinecone.js",
+            "console": "integratedTerminal",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.local"
         }
     ]
 }
