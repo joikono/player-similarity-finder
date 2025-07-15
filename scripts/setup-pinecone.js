@@ -1,6 +1,10 @@
 // Usage: npm run setup-pinecone OR node scripts/setup-pinecone.js (ONLY ONCE)
 
+require('dotenv').config(); // use dotenv to load .env
+
 const { Pinecone } = require('@pinecone-database/pinecone');
+
+var maxValues = {};
 
 async function setupPinecone() {
     const pinecone = new Pinecone({
@@ -40,6 +44,17 @@ async function setupPinecone() {
         const players = await fetchAllPlayers();
         console.log(`Found ${players.length} players with stats`);
 
+        maxValues = {
+            points: Math.max(...players.map(p => p.stats.points)),
+            assists: Math.max(...players.map(p => p.stats.assists)),
+            rebounds: Math.max(...players.map(p => p.stats.rebounds)),
+            steals: Math.max(...players.map(p => p.stats.steals)),
+            blocks: Math.max(...players.map(p => p.stats.blocks)),
+            turnovers: Math.max(...players.map(p => p.stats.turnovers)),
+        }
+
+        console.log("Maximum values:", maxValues)
+
         // Convert to vectors and upsert to Pinecone
         console.log('Converting to vectors and uploading to Pinecone...');
         const vectors = players.map(player => ({
@@ -50,7 +65,6 @@ async function setupPinecone() {
                 team: player.team,
                 position: player.position,
                 imageUrl: player.imageUrl,
-                stats: player.stats
             }
         }));
 
@@ -69,54 +83,123 @@ async function setupPinecone() {
     }
 }
 
-// Helper function to fetch all players with stats
+// Helper function to fetch all players 
 async function fetchAllPlayers() {
     const allPlayers = [];
 
-    // Fetch multiple pages of players
-    for (let page = 1; page <= 10; page++) {
-        try {
-            const response = await fetch(
-                `https://www.balldontlie.io/api/v1/players?per_page=100&page=${page}`
-            );
-            const data = await response.json();
-
-            // Get stats for each player
-            for (const player of data.data) {
-                const statsResponse = await fetch(
-                    `https://www.balldontlie.io/api/v1/season_averages?season=2024&player_ids[]=${player.id}`
-                );
-                const statsData = await statsResponse.json();
-                const stats = statsData.data[0];
-
-                if (stats && stats.pts > 0) {
-                    allPlayers.push({
-                        id: player.id,
-                        name: `${player.first_name} ${player.last_name}`,
-                        team: player.team.full_name,
-                        position: player.position,
-                        imageUrl: `https://cdn.nba.com/headshots/nba/latest/1040x760/${player.id}.png`,
-                        stats: {
-                            points: stats.pts || 0,
-                            assists: stats.ast || 0,
-                            rebounds: stats.reb || 0,
-                            steals: stats.stl || 0,
-                            blocks: stats.blk || 0,
-                            turnovers: stats.turnover || 0,
-                            fieldGoalPercentage: stats.fg_pct || 0,
-                            threePointPercentage: stats.fg3_pct || 0,
-                            freeThrowPercentage: stats.ft_pct || 0,
-                        }
-                    });
+    try {
+        // Use the same working API call from your route.ts
+        const response = await fetch(
+            'https://stats.nba.com/stats/commonallplayers?LeagueID=00&Season=2024-25&IsOnlyCurrentSeason=0',
+            {
+                headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Host': 'stats.nba.com',
+                    'Origin': 'https://www.nba.com',
+                    'Referer': 'https://www.nba.com/',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'x-nba-stats-origin': 'stats',
+                    'x-nba-stats-token': 'true'
                 }
+            }
+        );
 
-                // Rate limiting
-                await new Promise(resolve => setTimeout(resolve, 50));
+        const data = await response.json();
+        const players = data.resultSets[0].rowSet;
+
+        // Get active players only (first 20 for testing to avoid rate limits)
+        const activePlayers = players
+            .filter(player => player[3] === 1) // Active status
+            .slice(0, 20); // Start small for testing
+
+        console.log(`Processing ${activePlayers.length} active players...`);
+
+        // Get stats for each player (copied from your route.ts logic)
+        for (const player of activePlayers) {
+            const playerId = player[0];
+            const playerName = player[2];
+            const teamName = player[10] || 'Free Agent';
+            const teamAbbr = player[11] || 'FA';
+
+            console.log(`Getting stats for ${playerName} (ID: ${playerId})`);
+
+            try {
+                // Get player's game log for current season (same as route.ts)
+                const statsResponse = await fetch(
+                    `https://stats.nba.com/stats/playergamelog?PlayerID=${playerId}&Season=2024-25&SeasonType=Regular+Season`,
+                    {
+                        headers: {
+                            'Accept': 'application/json, text/plain, */*',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Accept-Encoding': 'gzip, deflate, br',
+                            'Connection': 'keep-alive',
+                            'Host': 'stats.nba.com',
+                            'Origin': 'https://www.nba.com',
+                            'Referer': 'https://www.nba.com/',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'x-nba-stats-origin': 'stats',
+                            'x-nba-stats-token': 'true'
+                        }
+                    }
+                );
+
+                if (statsResponse.ok) {
+                    const statsData = await statsResponse.json();
+                    const games = statsData.resultSets[0].rowSet;
+
+                    if (games.length > 0) {
+                        // Calculate season averages (same logic as route.ts)
+                        const totals = games.reduce((acc, game) => {
+                            if (!game || game.length < 25) return acc;
+
+                            return {
+                                points: acc.points + (Number(game[24]) || 0),
+                                rebounds: acc.rebounds + (Number(game[18]) || 0),
+                                assists: acc.assists + (Number(game[19]) || 0),
+                                steals: acc.steals + (Number(game[20]) || 0),
+                                blocks: acc.blocks + (Number(game[21]) || 0),
+                                turnovers: acc.turnovers + (Number(game[22]) || 0), // Added turnovers
+                                games: acc.games + 1
+                            };
+                        }, { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, turnovers: 0, games: 0 });
+
+                        if (totals.games > 0) {
+                            console.log(`${playerName}: ${totals.games} games, ${(totals.points / totals.games).toFixed(1)} PPG`);
+
+                            allPlayers.push({
+                                id: playerId,
+                                name: playerName,
+                                team: teamName,
+                                position: 'Player',
+                                imageUrl: `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`,
+                                stats: {
+                                    points: totals.points / totals.games,
+                                    rebounds: totals.rebounds / totals.games,
+                                    assists: totals.assists / totals.games,
+                                    steals: totals.steals / totals.games,
+                                    blocks: totals.blocks / totals.games,
+                                    turnovers: totals.turnovers / totals.games,
+                                    fieldGoalPercentage: 0.45,  // Estimate for now
+                                    threePointPercentage: 0.35, // Estimate for now
+                                    freeThrowPercentage: 0.75   // Estimate for now
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log(`Failed to get stats for ${playerName}:`, error);
             }
 
-        } catch (error) {
-            console.error(`Error fetching page ${page}:`, error);
+            // Rate limiting to avoid hitting API too hard
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
+
+    } catch (error) {
+        console.error('Error fetching players:', error);
     }
 
     return allPlayers;
@@ -126,12 +209,12 @@ async function fetchAllPlayers() {
 function normalizeAndVectorize(stats) {
     // Simple normalization (you'd want to use global min/max in production)
     return [
-        Math.min(stats.points / 40, 1),           // Max ~40 PPG
-        Math.min(stats.assists / 15, 1),          // Max ~15 APG
-        Math.min(stats.rebounds / 20, 1),         // Max ~20 RPG
-        Math.min(stats.steals / 4, 1),            // Max ~4 SPG
-        Math.min(stats.blocks / 4, 1),            // Max ~4 BPG
-        Math.min(stats.turnovers / 6, 1),         // Max ~6 TPG
+        Math.min(stats.points / maxValues.points, 1),           // Max ~40 PPG
+        Math.min(stats.assists / maxValues.assists, 1),          // Max ~15 APG
+        Math.min(stats.rebounds / maxValues.rebounds, 1),         // Max ~20 RPG
+        Math.min(stats.steals / maxValues.steals, 1),            // Max ~4 SPG
+        Math.min(stats.blocks / maxValues.blocks, 1),            // Max ~4 BPG
+        Math.min(stats.turnovers / maxValues.turnovers, 1),         // Max ~6 TPG
         stats.fieldGoalPercentage,                // Already 0-1
         stats.threePointPercentage,               // Already 0-1
         stats.freeThrowPercentage                 // Already 0-1
