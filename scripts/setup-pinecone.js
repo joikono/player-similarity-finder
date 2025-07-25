@@ -51,9 +51,14 @@ async function setupPinecone() {
             steals: Math.max(...players.map(p => p.stats.steals)),
             blocks: Math.max(...players.map(p => p.stats.blocks)),
             turnovers: Math.max(...players.map(p => p.stats.turnovers)),
+            fieldGoalPercentage: Math.max(...players.map(p => p.stats.fieldGoalPercentage)),
+            threePointPercentage: Math.max(...players.map(p => p.stats.threePointPercentage)),
+            freeThrowPercentage: Math.max(...players.map(p => p.stats.freeThrowPercentage))
         }
 
         console.log("Maximum values:", maxValues)
+
+        writeMaxValuesToFile(maxValues);
 
         // Convert to vectors and upsert to Pinecone
         console.log('Converting to vectors and uploading to Pinecone...');
@@ -86,7 +91,7 @@ async function setupPinecone() {
 // Helper function to fetch all players 
 async function fetchAllPlayers() {
     const allPlayers = [];
-    let a = 1;
+    // let a = 1; // for player indexing checks
     try {
         // Use the same working API call from your route.ts
         const response = await fetch(
@@ -153,15 +158,16 @@ async function fetchAllPlayers() {
                     if (games.length > 0) {
                         // Calculate season averages (same logic as route.ts)
                         
-                        if (a == 1) {
-                            // check stat indexing
-                            console.log(`Sample game data for ${playerName}:`);
-                            games[2].forEach((value, index) => { // to verify 3p% index
-                                console.log(`Index ${index}: ${value}`);
-                            });
-                            console.log(`Game array length:`, games[0].length);
-                            a++;
-                        }
+                        // CHECK for player stat indexing
+                        // if (a == 1) {
+                        //     // check stat indexing
+                        //     console.log(`Sample game data for ${playerName}:`);
+                        //     games[2].forEach((value, index) => { // to verify 3p% index
+                        //         console.log(`Index ${index}: ${value}`);
+                        //     });
+                        //     console.log(`Game array length:`, games[0].length);
+                        //     a++;
+                        // }
 
                         const totals = games.reduce((acc, game) => {
                             if (!game || game.length < 25) return acc;
@@ -172,13 +178,42 @@ async function fetchAllPlayers() {
                                 assists: acc.assists + (Number(game[19]) || 0),
                                 steals: acc.steals + (Number(game[20]) || 0),
                                 blocks: acc.blocks + (Number(game[21]) || 0),
-                                turnovers: acc.turnovers + (Number(game[22]) || 0), // Added turnovers
+                                turnovers: acc.turnovers + (Number(game[22]) || 0),
+                                fieldGoalPercentage: acc.fieldGoalPercentage + (Number(game[9]) || 0),
+                                threePointPercentage: acc.threePointPercentage + (Number(game[12]) || 0),
+                                freeThrowPercentage: acc.freeThrowPercentage + (Number(game[15]) || 0),
                                 games: acc.games + 1
                             };
-                        }, { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, turnovers: 0, games: 0 });
+                        }, { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, turnovers: 0, games: 0, 
+                            fieldGoalPercentage: 0, threePointPercentage: 0, freeThrowPercentage: 0});
 
                         if (totals.games > 0) {
                             console.log(`${playerName}: ${totals.games} games, ${(totals.points / totals.games).toFixed(1)} PPG`);
+
+                            // ADD THIS LOGGING BLOCK HERE:
+                            const finalStats = {
+                                points: totals.points / totals.games,
+                                rebounds: totals.rebounds / totals.games,
+                                assists: totals.assists / totals.games,
+                                steals: totals.steals / totals.games,
+                                blocks: totals.blocks / totals.games,
+                                turnovers: totals.turnovers / totals.games,
+                                fieldGoalPercentage: totals.fieldGoalPercentage / totals.games,
+                                threePointPercentage: totals.threePointPercentage / totals.games,
+                                freeThrowPercentage: totals.freeThrowPercentage / totals.games
+                            };
+
+                            // Log the percentages for the first player
+                            if (allPlayers.length === 0) {
+                                console.log('=== DEBUGGING FIRST PLAYER PERCENTAGES ===');
+                                console.log('Raw totals:', totals);
+                                console.log('Final stats:', finalStats);
+                                console.log('FG%:', finalStats.fieldGoalPercentage);
+                                console.log('3P%:', finalStats.threePointPercentage);
+                                console.log('FT%:', finalStats.freeThrowPercentage);
+                                console.log('=== END DEBUG ===');
+                            }
+
 
                             allPlayers.push({
                                 id: playerId,
@@ -193,9 +228,9 @@ async function fetchAllPlayers() {
                                     steals: totals.steals / totals.games,
                                     blocks: totals.blocks / totals.games,
                                     turnovers: totals.turnovers / totals.games,
-                                    fieldGoalPercentage: 0.45,  // Estimate for now
-                                    threePointPercentage: 0.35, // Estimate for now
-                                    freeThrowPercentage: 0.75   // Estimate for now
+                                    fieldGoalPercentage: totals.fieldGoalPercentage / totals.games,
+                                    threePointPercentage: totals.threePointPercentage / totals.games,
+                                    freeThrowPercentage: totals.freeThrowPercentage / totals.games
                                 }
                             });
                         }
@@ -230,6 +265,67 @@ function normalizeAndVectorize(stats) {
         stats.threePointPercentage,               // Already 0-1
         stats.freeThrowPercentage                 // Already 0-1
     ];
+}
+
+// write max values to normalization.ts
+function writeMaxValuesToFile(maxValues) {
+    const fs = require('fs');
+    const path = require('path');
+
+    const filePath = path.join(__dirname, '..', 'src', 'lib', 'normalization.ts');
+
+    const fileContent = `// This file is auto-generated by setup-pinecone.js
+        // Do not edit manually - run 'npm run setup-pinecone' to update
+
+        export interface MaxValues {
+        points: number;
+        assists: number;
+        rebounds: number;
+        steals: number;
+        blocks: number;
+        turnovers: number;
+        }
+
+        export interface PlayerStats {
+        points: number;
+        rebounds: number;
+        assists: number;
+        steals: number;
+        blocks: number;
+        turnovers: number;
+        fieldGoalPercentage: number;
+        threePointPercentage: number;
+        freeThrowPercentage: number;
+        }
+
+        // Auto-generated max values from dataset
+        export const MAX_VALUES: MaxValues = {
+        points: ${maxValues.points},
+        assists: ${maxValues.assists},
+        rebounds: ${maxValues.rebounds},
+        steals: ${maxValues.steals},
+        blocks: ${maxValues.blocks},
+        turnovers: ${maxValues.turnovers},
+        };
+
+        // Normalization function
+        export function normalizeAndVectorize(stats: PlayerStats): number[] {
+        return [
+            Math.min(stats.points / MAX_VALUES.points, 1),
+            Math.min(stats.assists / MAX_VALUES.assists, 1),
+            Math.min(stats.rebounds / MAX_VALUES.rebounds, 1),
+            Math.min(stats.steals / MAX_VALUES.steals, 1),
+            Math.min(stats.blocks / MAX_VALUES.blocks, 1),
+            Math.min(stats.turnovers / MAX_VALUES.turnovers, 1),
+            stats.fieldGoalPercentage,
+            stats.threePointPercentage,
+            stats.freeThrowPercentage
+        ];
+        }
+    `;
+
+    fs.writeFileSync(filePath, fileContent);
+    console.log('✅ Max values written to normalization.ts');
 }
 
 // Run the setup
